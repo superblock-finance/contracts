@@ -9,10 +9,8 @@ import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol"
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
 
 contract CustomToken is Initializable, ERC20Upgradeable, ERC20BurnableUpgradeable, ERC20PausableUpgradeable, ERC20PermitUpgradeable, AccessControlUpgradeable, UUPSUpgradeable, ReentrancyGuardUpgradeable {
-    using SafeERC20Upgradeable for IERC20Upgradeable;
 
     bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
     bytes32 public constant MINTER_ROLE = keccak256("MINTER_ROLE");
@@ -25,7 +23,6 @@ contract CustomToken is Initializable, ERC20Upgradeable, ERC20BurnableUpgradeabl
     event Pause();
     event Unpause();
     event WithdrawEther(address indexed to, uint256 amount);
-    event WithdrawERC20(address indexed token, address indexed to, uint256 amount);
 
     error AccountFrozen(address account);
     error InsufficientBalance();
@@ -94,17 +91,6 @@ contract CustomToken is Initializable, ERC20Upgradeable, ERC20BurnableUpgradeabl
         if (amount > address(this).balance) revert InsufficientBalance();
         payable(_msgSender()).transfer(amount);
         emit WithdrawEther(_msgSender(), amount);
-    }
-
-    /**
-     * @dev Withdraws `amount` of ERC20 tokens from the contract to the caller's address.
-     */
-    function withdrawERC20(address tokenAddress, uint256 amount) public nonReentrant onlyRole(WITHDRAWER_ROLE) whenNotPaused {
-        IERC20Upgradeable token = IERC20Upgradeable(tokenAddress);
-        uint256 balance = token.balanceOf(address(this));
-        if (amount > balance) revert InsufficientBalance();
-        token.safeTransfer(_msgSender(), amount);
-        emit WithdrawERC20(tokenAddress, _msgSender(), amount);
     }
 
     /**

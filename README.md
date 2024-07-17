@@ -6,7 +6,10 @@ Developed by: Robert Chanphakeo
 
 ## Contracts
 
-- `CustomToken.sol`: Implementation of a customizable ERC20 token with additional features. Note that no initial supply is minted during deployment; tokens can be minted in a separate transaction.
+- `CustomToken.sol`: Implementation of a customizable ERC20 token.
+- `CustomFiatToken.sol`: Implementation of a customizable ERC20 token for stablecoins with additional features such as freeze account and unfreeze account. 
+
+Note that no initial supply is minted during deployment; tokens can be minted in a separate transaction.
 
 ## License
 
