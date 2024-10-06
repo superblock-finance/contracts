@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.26;
+pragma solidity ^0.8.27;
 
 import "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC20BurnableUpgradeable.sol";
@@ -15,21 +15,21 @@ contract CustomFiatToken is Initializable, ERC20Upgradeable, ERC20BurnableUpgrad
     bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
     bytes32 public constant MINTER_ROLE = keccak256("MINTER_ROLE");
     bytes32 public constant BURNER_ROLE = keccak256("BURNER_ROLE");
-    bytes32 public constant FREEZER_ROLE = keccak256("FREEZER_ROLE");
+    bytes32 public constant BLACKLISTER_ROLE = keccak256("BLACKLISTER_ROLE");
     bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
     bytes32 public constant WITHDRAWER_ROLE = keccak256("WITHDRAWER_ROLE");
 
-    mapping(address => bool) private _frozenAccounts;
+    mapping(address => bool) private _blacklistedAccounts;
 
     event Mint(address indexed to, uint256 amount);
     event Burn(address indexed from, uint256 amount);
-    event Freeze(address indexed account);
-    event Unfreeze(address indexed account);
+    event Blacklist(address indexed account);
+    event Unblacklist(address indexed account);
     event Pause();
     event Unpause();
     event WithdrawEther(address indexed to, uint256 amount);
 
-    error AccountFrozen(address account);
+    error AccountBlacklisted(address account);
     error InsufficientBalance();
     
     /// @custom:oz-upgrades-unsafe-allow constructor
@@ -53,7 +53,7 @@ contract CustomFiatToken is Initializable, ERC20Upgradeable, ERC20BurnableUpgrad
         _grantRole(PAUSER_ROLE, admin);
         _grantRole(MINTER_ROLE, admin);
         _grantRole(BURNER_ROLE, admin);
-        _grantRole(FREEZER_ROLE, admin);
+        _grantRole(BLACKLISTER_ROLE, admin);
         _grantRole(UPGRADER_ROLE, admin);
         _grantRole(WITHDRAWER_ROLE, admin);
     }
@@ -91,26 +91,26 @@ contract CustomFiatToken is Initializable, ERC20Upgradeable, ERC20BurnableUpgrad
     }
 
     /**
-     * @dev Freezes the account `account`.
+     * @dev Blacklist the account `account`.
      */
-    function freeze(address account) public onlyRole(FREEZER_ROLE) {
-        _frozenAccounts[account] = true;
-        emit Freeze(account);
+    function blacklist(address account) public onlyRole(BLACKLISTER_ROLE) {
+        _blacklistedAccounts[account] = true;
+        emit Blacklist(account);
     }
 
     /**
-     * @dev Unfreezes the account `account`.
+     * @dev Unblacklist the account `account`.
      */
-    function unfreeze(address account) public onlyRole(FREEZER_ROLE) {
-        _frozenAccounts[account] = false;
-        emit Unfreeze(account);
+    function unblacklist(address account) public onlyRole(BLACKLISTER_ROLE) {
+        _blacklistedAccounts[account] = false;
+        emit Unblacklist(account);
     }
 
     /**
-     * @dev Returns true if the account `account` is frozen.
+     * @dev Returns true if the account `account` is blacklisted.
      */
-    function isFrozen(address account) public view returns (bool) {
-        return _frozenAccounts[account];
+    function isBlacklisted(address account) public view returns (bool) {
+        return _blacklistedAccounts[account];
     }
 
     /**
@@ -129,8 +129,8 @@ contract CustomFiatToken is Initializable, ERC20Upgradeable, ERC20BurnableUpgrad
         internal
         override(ERC20Upgradeable, ERC20PausableUpgradeable)
     {
-        if (_frozenAccounts[from]) revert AccountFrozen(from);
-        if (_frozenAccounts[to]) revert AccountFrozen(to);
+        if (_blacklistedAccounts[from]) revert AccountBlacklisted(from);
+        if (_blacklistedAccounts[to]) revert AccountBlacklisted(to);
         super._update(from, to, value);
     }
 
