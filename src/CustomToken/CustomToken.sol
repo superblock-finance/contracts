@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.26;
+pragma solidity ^0.8.27;
 
 import "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC20BurnableUpgradeable.sol";
@@ -24,7 +24,6 @@ contract CustomToken is Initializable, ERC20Upgradeable, ERC20BurnableUpgradeabl
     event Unpause();
     event WithdrawEther(address indexed to, uint256 amount);
 
-    error AccountFrozen(address account);
     error InsufficientBalance();
     
     /// @custom:oz-upgrades-unsafe-allow constructor
