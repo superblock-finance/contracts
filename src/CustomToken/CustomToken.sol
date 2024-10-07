@@ -148,8 +148,4 @@ contract CustomToken is Initializable, ERC20Upgradeable, ERC20BurnableUpgradeabl
      * @dev Authorizes contract upgrades. Only callable by addresses with the UPGRADER_ROLE.
      */
     function _authorizeUpgrade(address newImplementation) internal override onlyRole(UPGRADER_ROLE) {}
-
-    // Fallback and receive functions to handle Ether transfers to the contract
-    receive() external payable {}
-    fallback() external payable {}
 }

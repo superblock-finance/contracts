@@ -188,8 +188,4 @@ contract CustomFiatToken is Initializable, ERC20Upgradeable, ERC20BurnableUpgrad
      * @dev Authorizes contract upgrades. Only callable by addresses with the UPGRADER_ROLE.
      */
     function _authorizeUpgrade(address newImplementation) internal override onlyRole(UPGRADER_ROLE) {}
-
-    // Fallback and receive functions to handle Ether transfers
-    receive() external payable {}
-    fallback() external payable {}
 }
