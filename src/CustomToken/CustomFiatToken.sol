@@ -14,8 +14,8 @@ import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeab
 
 /**
  * @title CustomFiatToken
- * @dev Implementation of an upgradeable ERC20 token with burn, pause, permit, and blacklist features.
- * Includes role-based access control for minting, burning, pausing, and upgrading the contract.
+ * @dev Implementation of an upgradeable ERC20 token with burn, pause, permit, freeze, and blacklist features.
+ * Includes role-based access control for minting, burning, pausing, upgrading, freezing, and blacklisting.
  */
 contract CustomFiatToken is Initializable, ERC20Upgradeable, ERC20BurnableUpgradeable, ERC20PausableUpgradeable, ERC20PermitUpgradeable, AccessControlUpgradeable, UUPSUpgradeable, ReentrancyGuardUpgradeable {
 
@@ -25,16 +25,20 @@ contract CustomFiatToken is Initializable, ERC20Upgradeable, ERC20BurnableUpgrad
     bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
     bytes32 public constant MINTER_ROLE = keccak256("MINTER_ROLE");
     bytes32 public constant BURNER_ROLE = keccak256("BURNER_ROLE");
+    bytes32 public constant FREEZER_ROLE = keccak256("FREEZER_ROLE");
     bytes32 public constant BLACKLISTER_ROLE = keccak256("BLACKLISTER_ROLE");
     bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
     bytes32 public constant WITHDRAWER_ROLE = keccak256("WITHDRAWER_ROLE");
 
-    // Blacklist mapping to store accounts that are restricted from interacting with the contract
+    // Store mappings for frozen and blacklisted accounts
+    mapping(address => bool) private _frozenAccounts;
     mapping(address => bool) private _blacklistedAccounts;
 
     // Events
     event MintEvent(address indexed to, uint256 amount);
     event BurnEvent(address indexed from, uint256 amount);
+    event FreezeEvent(address indexed account);
+    event UnfreezeEvent(address indexed account);
     event BlacklistEvent(address indexed account);
     event UnblacklistEvent(address indexed account);
     event PauseEvent();
@@ -43,6 +47,7 @@ contract CustomFiatToken is Initializable, ERC20Upgradeable, ERC20BurnableUpgrad
     event WithdrawERC20Event(address indexed token, address indexed to, uint256 amount);
 
     // Custom errors
+    error AccountFrozen(address account);
     error AccountBlacklisted(address account);
     error InsufficientBalance();
     
@@ -68,6 +73,7 @@ contract CustomFiatToken is Initializable, ERC20Upgradeable, ERC20BurnableUpgrad
         _grantRole(PAUSER_ROLE, admin);
         _grantRole(MINTER_ROLE, admin);
         _grantRole(BURNER_ROLE, admin);
+        _grantRole(FREEZER_ROLE, admin);
         _grantRole(BLACKLISTER_ROLE, admin);
         _grantRole(UPGRADER_ROLE, admin);
         _grantRole(WITHDRAWER_ROLE, admin);
@@ -113,6 +119,35 @@ contract CustomFiatToken is Initializable, ERC20Upgradeable, ERC20BurnableUpgrad
     function unpause() public onlyRole(PAUSER_ROLE) {
         _unpause();
         emit UnpauseEvent();
+    }
+
+    /**
+     * @dev Freezes an account, preventing it from transferring tokens.
+     * Can only be called by an address with the FREEZER_ROLE.
+     * @param account The account to freeze.
+     */
+    function freeze(address account) public onlyRole(FREEZER_ROLE) {
+        _frozenAccounts[account] = true;
+        emit FreezeEvent(account);
+    }
+
+    /**
+     * @dev Unfreezes an account, allowing it to transfer tokens again.
+     * Can only be called by an address with the FREEZER_ROLE.
+     * @param account The account to unfreeze.
+     */
+    function unfreeze(address account) public onlyRole(FREEZER_ROLE) {
+        _frozenAccounts[account] = false;
+        emit UnfreezeEvent(account);
+    }
+
+    /**
+     * @dev Checks if an account is frozen.
+     * @param account The account to check.
+     * @return bool True if the account is frozen, false otherwise.
+     */
+    function isFrozen(address account) public view returns (bool) {
+        return _frozenAccounts[account];
     }
 
     /**
@@ -173,12 +208,14 @@ contract CustomFiatToken is Initializable, ERC20Upgradeable, ERC20BurnableUpgrad
 
     /**
      * @dev Override for the token transfer hook that includes pause functionality and blacklist check.
-     * Prevents blacklisted accounts from sending or receiving tokens.
+     * Prevents frozen or blacklisted accounts from sending or receiving tokens.
      */
     function _update(address from, address to, uint256 value)
         internal
         override(ERC20Upgradeable, ERC20PausableUpgradeable)
     {
+        if (_frozenAccounts[from]) revert AccountFrozen(from);
+        if (_frozenAccounts[to]) revert AccountFrozen(to);        
         if (_blacklistedAccounts[from]) revert AccountBlacklisted(from);
         if (_blacklistedAccounts[to]) revert AccountBlacklisted(to);
         super._update(from, to, value);
