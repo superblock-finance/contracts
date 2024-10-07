@@ -9,21 +9,33 @@ import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol"
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
 
+/**
+ * @title CustomToken
+ * @dev Implementation of an upgradeable ERC20 token with additional features like burn, pause, and permit.
+ */
 contract CustomToken is Initializable, ERC20Upgradeable, ERC20BurnableUpgradeable, ERC20PausableUpgradeable, ERC20PermitUpgradeable, AccessControlUpgradeable, UUPSUpgradeable, ReentrancyGuardUpgradeable {
 
+    using SafeERC20Upgradeable for IERC20Upgradeable;
+
+    // Define roles for access control
     bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
     bytes32 public constant MINTER_ROLE = keccak256("MINTER_ROLE");
     bytes32 public constant BURNER_ROLE = keccak256("BURNER_ROLE");
     bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
     bytes32 public constant WITHDRAWER_ROLE = keccak256("WITHDRAWER_ROLE");
 
-    event Mint(address indexed to, uint256 amount);
-    event Burn(address indexed from, uint256 amount);
-    event Pause();
-    event Unpause();
-    event WithdrawEther(address indexed to, uint256 amount);
+    // Events
+    event MintEvent(address indexed to, uint256 amount);
+    event BurnEvent(address indexed from, uint256 amount);
+    event PauseEvent();
+    event UnpauseEvent();
+    event WithdrawERC20Event(address indexed token, address indexed to, uint256 amount);
+    event WithdrawEtherEvent(address indexed to, uint256 amount);
 
+    // Custom errors
     error InsufficientBalance();
     
     /// @custom:oz-upgrades-unsafe-allow constructor
@@ -31,8 +43,8 @@ contract CustomToken is Initializable, ERC20Upgradeable, ERC20BurnableUpgradeabl
         _disableInitializers();
     }
 
-    /**
-     * @dev Initializes the contract with a name and symbol and grants `admin` the default admin role.
+     /**
+     * @dev Initializes the token with a name, symbol, and grants roles to a specified admin.
      */
     function initialize(string memory name, string memory symbol, address admin) initializer public {
         __ERC20_init(name, symbol);
@@ -43,6 +55,7 @@ contract CustomToken is Initializable, ERC20Upgradeable, ERC20BurnableUpgradeabl
         __UUPSUpgradeable_init();
         __ReentrancyGuard_init();
 
+        // Grant roles to the specified admin address
         _grantRole(DEFAULT_ADMIN_ROLE, admin);
         _grantRole(PAUSER_ROLE, admin);
         _grantRole(MINTER_ROLE, admin);
@@ -52,48 +65,77 @@ contract CustomToken is Initializable, ERC20Upgradeable, ERC20BurnableUpgradeabl
     }
 
     /**
-     * @dev Mints `amount` of tokens to the address `to`.
+     * @dev Mints tokens to a specific address.
+     * Can only be called by an address with the MINTER_ROLE.
+     * @param to The address receiving the minted tokens.
+     * @param amount The amount of tokens to mint.
      */
     function mint(address to, uint256 amount) public onlyRole(MINTER_ROLE) whenNotPaused {
         _mint(to, amount);
-        emit Mint(to, amount);
+        emit MintEvent(to, amount);
     }
 
     /**
-     * @dev Burns `amount` of tokens from the address `from`.
+     * @dev Burns tokens from a specific address.
+     * Can only be called by an address with the BURNER_ROLE.
+     * @param from The address whose tokens will be burned.
+     * @param amount The amount of tokens to burn.
      */
     function burn(address from, uint256 amount) public onlyRole(BURNER_ROLE) whenNotPaused {
         _burn(from, amount);
-        emit Burn(from, amount);
+        emit BurnEvent(from, amount);
     }
 
     /**
-     * @dev Pauses all token transfers.
+     * @dev Pauses the contract, disabling certain functions.
+     * Only callable by addresses with the PAUSER_ROLE.
      */
     function pause() public onlyRole(PAUSER_ROLE) {
         _pause();
-        emit Pause();
+        emit PauseEvent();
     }
 
     /**
      * @dev Unpauses all token transfers.
+     * Only callable by addresses with the PAUSER_ROLE.
      */
     function unpause() public onlyRole(PAUSER_ROLE) {
         _unpause();
-        emit Unpause();
+        emit UnpauseEvent();
     }
 
     /**
-     * @dev Withdraws `amount` of Ether from the contract to the caller's address.
+     * @dev Withdraws mistakenly sent ether from the contract.
+     * Can only be called by an address with the WITHDRAWER_ROLE.
+     * @param amount The amount of Ether to withdraw.
      */
-    function withdrawEther(uint256 amount) public nonReentrant onlyRole(WITHDRAWER_ROLE) {
+    function withdrawEther(uint256 amount)
+        external
+        nonReentrant
+        onlyRole(WITHDRAWER_ROLE)
+    {
         if (amount > address(this).balance) revert InsufficientBalance();
         payable(_msgSender()).transfer(amount);
-        emit WithdrawEther(_msgSender(), amount);
+        emit WithdrawEtherEvent(_msgSender(), amount);
     }
 
     /**
-     * @dev Overrides required by Solidity for internal functions.
+     * @dev Withdraws mistakenly sent ERC20 tokens from the contract.
+     * Can only be called by an address with the WITHDRAWER_ROLE.
+     * @param tokenAddress The address of the ERC20 token.
+     * @param amount The amount of tokens to withdraw.
+     */
+    function withdrawERC20(address tokenAddress, uint256 amount) public nonReentrant onlyRole(WITHDRAWER_ROLE) {
+        IERC20Upgradeable token = IERC20Upgradeable(tokenAddress);
+        uint256 contractBalance = token.balanceOf(address(this));
+        
+        if (amount > contractBalance) revert InsufficientBalance();
+
+        token.safeTransfer(_msgSender(), amount);
+        emit WithdrawERC20Event(tokenAddress, _msgSender(), amount);
+    }
+    /**
+     * @dev Override for the token transfer hook that includes pause functionality.
      */
     function _update(address from, address to, uint256 value)
         internal
@@ -103,11 +145,11 @@ contract CustomToken is Initializable, ERC20Upgradeable, ERC20BurnableUpgradeabl
     }
 
     /**
-     * @dev Authorizes contract upgrades.
+     * @dev Authorizes contract upgrades. Only callable by addresses with the UPGRADER_ROLE.
      */
     function _authorizeUpgrade(address newImplementation) internal override onlyRole(UPGRADER_ROLE) {}
 
-    // Fallback and receive functions to handle Ether transfers
+    // Fallback and receive functions to handle Ether transfers to the contract
     receive() external payable {}
     fallback() external payable {}
 }
