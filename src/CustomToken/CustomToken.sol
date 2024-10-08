@@ -36,7 +36,7 @@ contract CustomToken is Initializable, ERC20Upgradeable, ERC20BurnableUpgradeabl
     event WithdrawEtherEvent(address indexed to, uint256 amount);
 
     // Custom errors
-    error InsufficientBalance();
+    error InsufficientContractBalance();
     
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -106,22 +106,19 @@ contract CustomToken is Initializable, ERC20Upgradeable, ERC20BurnableUpgradeabl
 
     /**
      * @dev Withdraws mistakenly sent ether from the contract.
-     * Can only be called by an address with the WITHDRAWER_ROLE.
      * @param amount The amount of Ether to withdraw.
      */
-    function withdrawEther(uint256 amount)
-        external
-        nonReentrant
-        onlyRole(WITHDRAWER_ROLE)
+    function withdrawEther(uint256 amount) public nonReentrant onlyRole(WITHDRAWER_ROLE)
     {
-        if (amount > address(this).balance) revert InsufficientBalance();
+        // Ensure the contract has enough balance
+        if (address(this).balance < amount) revert InsufficientContractBalance();
+
         payable(_msgSender()).transfer(amount);
         emit WithdrawEtherEvent(_msgSender(), amount);
     }
 
     /**
      * @dev Withdraws mistakenly sent ERC20 tokens from the contract.
-     * Can only be called by an address with the WITHDRAWER_ROLE.
      * @param tokenAddress The address of the ERC20 token.
      * @param amount The amount of tokens to withdraw.
      */
@@ -129,17 +126,17 @@ contract CustomToken is Initializable, ERC20Upgradeable, ERC20BurnableUpgradeabl
         IERC20Upgradeable token = IERC20Upgradeable(tokenAddress);
         uint256 contractBalance = token.balanceOf(address(this));
         
-        if (amount > contractBalance) revert InsufficientBalance();
+        // Ensure the contract has enough balance
+        if (contractBalance < amount) revert InsufficientContractBalance();
 
         token.safeTransfer(_msgSender(), amount);
         emit WithdrawERC20Event(tokenAddress, _msgSender(), amount);
     }
+
     /**
      * @dev Override for the token transfer hook that includes pause functionality.
      */
-    function _update(address from, address to, uint256 value)
-        internal
-        override(ERC20Upgradeable, ERC20PausableUpgradeable)
+    function _update(address from, address to, uint256 value) internal override(ERC20Upgradeable, ERC20PausableUpgradeable)
     {
         super._update(from, to, value);
     }

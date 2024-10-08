@@ -49,8 +49,8 @@ contract CustomFiatToken is Initializable, ERC20Upgradeable, ERC20BurnableUpgrad
     // Custom errors
     error AccountFrozen(address account);
     error AccountBlacklisted(address account);
-    error InsufficientBalance();
-    
+    error InsufficientContractBalance();
+
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
         _disableInitializers();
@@ -181,26 +181,28 @@ contract CustomFiatToken is Initializable, ERC20Upgradeable, ERC20BurnableUpgrad
 
     /**
      * @dev Withdraws mistakenly sent ether from the contract.
-     * Can only be called by an address with the WITHDRAWER_ROLE.
      * @param amount The amount of Ether to withdraw.
      */
-    function withdrawEther(uint256 amount) public nonReentrant onlyRole(WITHDRAWER_ROLE) {
-        if (amount > address(this).balance) revert InsufficientBalance();
+    function withdrawEther(uint256 amount) public nonReentrant onlyRole(WITHDRAWER_ROLE)
+    {
+        // Ensure the contract has enough balance
+        if (address(this).balance < amount) revert InsufficientContractBalance();
+
         payable(_msgSender()).transfer(amount);
         emit WithdrawEtherEvent(_msgSender(), amount);
     }
 
     /**
      * @dev Withdraws mistakenly sent ERC20 tokens from the contract.
-     * Can only be called by an address with the WITHDRAWER_ROLE.
      * @param tokenAddress The address of the ERC20 token.
      * @param amount The amount of tokens to withdraw.
      */
     function withdrawERC20(address tokenAddress, uint256 amount) public nonReentrant onlyRole(WITHDRAWER_ROLE) {
         IERC20Upgradeable token = IERC20Upgradeable(tokenAddress);
         uint256 contractBalance = token.balanceOf(address(this));
-
-        if (amount > contractBalance) revert InsufficientBalance();
+        
+        // Ensure the contract has enough balance
+        if (contractBalance < amount) revert InsufficientContractBalance();
 
         token.safeTransfer(_msgSender(), amount);
         emit WithdrawERC20Event(tokenAddress, _msgSender(), amount);
@@ -210,9 +212,7 @@ contract CustomFiatToken is Initializable, ERC20Upgradeable, ERC20BurnableUpgrad
      * @dev Override for the token transfer hook that includes pause functionality and blacklist check.
      * Prevents frozen or blacklisted accounts from sending or receiving tokens.
      */
-    function _update(address from, address to, uint256 value)
-        internal
-        override(ERC20Upgradeable, ERC20PausableUpgradeable)
+    function _update(address from, address to, uint256 value) internal override(ERC20Upgradeable, ERC20PausableUpgradeable)
     {
         if (_frozenAccounts[from]) revert AccountFrozen(from);
         if (_frozenAccounts[to]) revert AccountFrozen(to);        
