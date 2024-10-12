@@ -76,16 +76,26 @@ contract CustomToken is Initializable, ERC20Upgradeable, ERC20BurnableUpgradeabl
     }
 
     /**
-     * @dev Burns tokens from a specific address.
+     * @dev Burns tokens from the caller's account.
      * Can only be called by an address with the BURNER_ROLE.
-     * @param from The address whose tokens will be burned.
      * @param amount The amount of tokens to burn.
      */
-    function burn(address from, uint256 amount) public onlyRole(BURNER_ROLE) whenNotPaused {
-        _burn(from, amount);
-        emit BurnEvent(from, amount);
+    function burn(uint256 amount) public onlyRole(BURNER_ROLE) whenNotPaused override {
+        _burn(_msgSender(), amount);
+        emit BurnEvent(_msgSender(), amount);
     }
 
+    /**
+     * @dev Burns tokens from a specified address using allowance mechanism.
+     * Can be called by any spender who has allowance to burn tokens.
+     * @param from The address to burn tokens from.
+     * @param amount The amount of tokens to burn.
+     */
+    function burnFrom(address from, uint256 amount) public onlyRole(BURNER_ROLE) whenNotPaused override {
+        _burn(from, amount);
+        emit BurnEvent(msg.sender, amount);
+    }
+    
     /**
      * @dev Pauses the contract, disabling certain functions.
      * Only callable by addresses with the PAUSER_ROLE.
@@ -136,8 +146,7 @@ contract CustomToken is Initializable, ERC20Upgradeable, ERC20BurnableUpgradeabl
     /**
      * @dev Override for the token transfer hook that includes pause functionality.
      */
-    function _update(address from, address to, uint256 value) internal override(ERC20Upgradeable, ERC20PausableUpgradeable)
-    {
+    function _update(address from, address to, uint256 value) internal override(ERC20Upgradeable, ERC20PausableUpgradeable) {
         super._update(from, to, value);
     }
 

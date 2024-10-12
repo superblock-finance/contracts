@@ -18,7 +18,6 @@ import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeab
  * Includes role-based access control for minting, burning, pausing, upgrading, freezing, and blacklisting.
  */
 contract CustomFiatToken is Initializable, ERC20Upgradeable, ERC20BurnableUpgradeable, ERC20PausableUpgradeable, ERC20PermitUpgradeable, AccessControlUpgradeable, UUPSUpgradeable, ReentrancyGuardUpgradeable {
-
     using SafeERC20Upgradeable for IERC20Upgradeable;
 
     // Define roles for access control
@@ -91,14 +90,24 @@ contract CustomFiatToken is Initializable, ERC20Upgradeable, ERC20BurnableUpgrad
     }
 
     /**
-     * @dev Burns tokens from a specified address.
+     * @dev Burns tokens from the caller's account.
      * Can only be called by an address with the BURNER_ROLE.
+     * @param amount The amount of tokens to burn.
+     */
+    function burn(uint256 amount) public onlyRole(BURNER_ROLE) whenNotPaused override {
+        _burn(_msgSender(), amount);
+        emit BurnEvent(_msgSender(), amount);
+    }
+
+    /**
+     * @dev Burns tokens from a specified address using allowance mechanism.
+     * Can be called by any spender who has allowance to burn tokens.
      * @param from The address to burn tokens from.
      * @param amount The amount of tokens to burn.
      */
-    function burn(address from, uint256 amount) public onlyRole(BURNER_ROLE) whenNotPaused {
+    function burnFrom(address from, uint256 amount) public onlyRole(BURNER_ROLE) whenNotPaused override {
         _burn(from, amount);
-        emit BurnEvent(from, amount);
+        emit BurnEvent(msg.sender, amount);
     }
 
     /**
@@ -212,8 +221,7 @@ contract CustomFiatToken is Initializable, ERC20Upgradeable, ERC20BurnableUpgrad
      * @dev Override for the token transfer hook that includes pause functionality and blacklist check.
      * Prevents frozen or blacklisted accounts from sending or receiving tokens.
      */
-    function _update(address from, address to, uint256 value) internal override(ERC20Upgradeable, ERC20PausableUpgradeable)
-    {
+    function _update(address from, address to, uint256 value) internal override(ERC20Upgradeable, ERC20PausableUpgradeable) {
         if (_frozenAccounts[from]) revert AccountFrozen(from);
         if (_frozenAccounts[to]) revert AccountFrozen(to);        
         if (_blacklistedAccounts[from]) revert AccountBlacklisted(from);
