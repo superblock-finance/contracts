@@ -95,7 +95,7 @@ contract CustomFiatToken is Initializable, ERC20Upgradeable, ERC20BurnableUpgrad
      * @param amount The amount of tokens to burn.
      */
     function burn(uint256 amount) public onlyRole(BURNER_ROLE) whenNotPaused override {
-        _burn(_msgSender(), amount);
+        super.burn(amount);
         emit BurnEvent(_msgSender(), amount);
     }
 
@@ -106,7 +106,7 @@ contract CustomFiatToken is Initializable, ERC20Upgradeable, ERC20BurnableUpgrad
      * @param amount The amount of tokens to burn.
      */
     function burnFrom(address from, uint256 amount) public onlyRole(BURNER_ROLE) whenNotPaused override {
-        _burn(from, amount);
+        super.burnFrom(from, amount);
         emit BurnEvent(msg.sender, amount);
     }
 
