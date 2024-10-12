@@ -17,7 +17,6 @@ import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeab
  * @dev Implementation of an upgradeable ERC20 token with additional features like burn, pause, and permit.
  */
 contract CustomToken is Initializable, ERC20Upgradeable, ERC20BurnableUpgradeable, ERC20PausableUpgradeable, ERC20PermitUpgradeable, AccessControlUpgradeable, UUPSUpgradeable, ReentrancyGuardUpgradeable {
-
     using SafeERC20Upgradeable for IERC20Upgradeable;
 
     // Define roles for access control
@@ -37,7 +36,9 @@ contract CustomToken is Initializable, ERC20Upgradeable, ERC20BurnableUpgradeabl
 
     // Custom errors
     error InsufficientContractBalance();
-    
+    error ZeroAddress();
+    error InvalidAmount();
+
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
         _disableInitializers();
@@ -65,12 +66,14 @@ contract CustomToken is Initializable, ERC20Upgradeable, ERC20BurnableUpgradeabl
     }
 
     /**
-     * @dev Mints tokens to a specific address.
+     * @dev Mints new tokens to a specified address.
      * Can only be called by an address with the MINTER_ROLE.
-     * @param to The address receiving the minted tokens.
+     * @param to The address to receive the tokens.
      * @param amount The amount of tokens to mint.
      */
     function mint(address to, uint256 amount) public onlyRole(MINTER_ROLE) whenNotPaused {
+        if (to == address(0)) revert ZeroAddress();
+        if (amount == 0) revert InvalidAmount();
         _mint(to, amount);
         emit MintEvent(to, amount);
     }
@@ -81,6 +84,7 @@ contract CustomToken is Initializable, ERC20Upgradeable, ERC20BurnableUpgradeabl
      * @param amount The amount of tokens to burn.
      */
     function burn(uint256 amount) public onlyRole(BURNER_ROLE) whenNotPaused override {
+        if (amount == 0) revert InvalidAmount();
         super.burn(amount);
         emit BurnEvent(_msgSender(), amount);
     }
@@ -92,6 +96,8 @@ contract CustomToken is Initializable, ERC20Upgradeable, ERC20BurnableUpgradeabl
      * @param amount The amount of tokens to burn.
      */
     function burnFrom(address from, uint256 amount) public onlyRole(BURNER_ROLE) whenNotPaused override {
+        if (from == address(0)) revert ZeroAddress();
+        if (amount == 0) revert InvalidAmount();
         super.burnFrom(from, amount);
         emit BurnEvent(msg.sender, amount);
     }

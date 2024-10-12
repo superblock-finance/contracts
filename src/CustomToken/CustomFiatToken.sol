@@ -49,7 +49,9 @@ contract CustomFiatToken is Initializable, ERC20Upgradeable, ERC20BurnableUpgrad
     error AccountFrozen(address account);
     error AccountBlacklisted(address account);
     error InsufficientContractBalance();
-
+    error ZeroAddress();
+    error InvalidAmount();
+    
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
         _disableInitializers();
@@ -85,6 +87,8 @@ contract CustomFiatToken is Initializable, ERC20Upgradeable, ERC20BurnableUpgrad
      * @param amount The amount of tokens to mint.
      */
     function mint(address to, uint256 amount) public onlyRole(MINTER_ROLE) whenNotPaused {
+        if (to == address(0)) revert ZeroAddress();
+        if (amount == 0) revert InvalidAmount();
         _mint(to, amount);
         emit MintEvent(to, amount);
     }
@@ -95,6 +99,7 @@ contract CustomFiatToken is Initializable, ERC20Upgradeable, ERC20BurnableUpgrad
      * @param amount The amount of tokens to burn.
      */
     function burn(uint256 amount) public onlyRole(BURNER_ROLE) whenNotPaused override {
+        if (amount == 0) revert InvalidAmount();
         super.burn(amount);
         emit BurnEvent(_msgSender(), amount);
     }
@@ -106,6 +111,8 @@ contract CustomFiatToken is Initializable, ERC20Upgradeable, ERC20BurnableUpgrad
      * @param amount The amount of tokens to burn.
      */
     function burnFrom(address from, uint256 amount) public onlyRole(BURNER_ROLE) whenNotPaused override {
+        if (from == address(0)) revert ZeroAddress();
+        if (amount == 0) revert InvalidAmount();
         super.burnFrom(from, amount);
         emit BurnEvent(msg.sender, amount);
     }
