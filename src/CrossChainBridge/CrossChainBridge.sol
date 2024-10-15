@@ -75,12 +75,13 @@ contract CrossChainBridge is Initializable, AccessControlUpgradeable, UUPSUpgrad
     }
 
     /**
-     * @dev Locks tokens to facilitate cross-chain transfers.
-     * Only callable by addresses with the MANAGER_ROLE.
-     * @param account The account whose tokens will be locked.
-     * @param amount The amount of tokens to lock.
-     * @param nonce The unique transaction identifier.
-     */
+    * @dev Locks tokens or Ether to facilitate cross-chain transfers.
+    * Only callable by addresses with the MANAGER_ROLE.
+    * @param token The address of the token to lock. Use address(0) for Ether.
+    * @param account The account whose tokens or Ether will be locked.
+    * @param amount The amount of tokens or Ether to lock.
+    * @param nonce A unique identifier for this transaction to prevent replay attacks.
+    */
     function lockToken(address token, address account, uint256 amount, bytes32 nonce) public onlyRole(MANAGER_ROLE) whenNotPaused nonReentrant {
         if (_nonces[nonce]) revert InvalidNonce();
         _nonces[nonce] = true;
@@ -100,12 +101,13 @@ contract CrossChainBridge is Initializable, AccessControlUpgradeable, UUPSUpgrad
     }
 
     /**
-     * @dev Unlocks tokens after cross-chain transfer.
-     * Only callable by addresses with the MANAGER_ROLE.
-     * @param account The account whose tokens will be unlocked.
-     * @param amount The amount of tokens to unlock.
-     * @param nonce The unique transaction identifier.
-     */
+    * @dev Unlocks tokens or Ether after a successful cross-chain transfer.
+    * Only callable by addresses with the MANAGER_ROLE.
+    * @param token The address of the token to unlock. Use address(0) for Ether.
+    * @param account The account that will receive the unlocked tokens or Ether.
+    * @param amount The amount of tokens or Ether to unlock.
+    * @param nonce A unique identifier for this transaction to prevent replay attacks.
+    */
     function unlockToken(address token, address account, uint256 amount, bytes32 nonce) public onlyRole(MANAGER_ROLE) whenNotPaused nonReentrant {
         if (_nonces[nonce]) revert InvalidNonce();
         _nonces[nonce] = true;
@@ -125,12 +127,13 @@ contract CrossChainBridge is Initializable, AccessControlUpgradeable, UUPSUpgrad
     }
 
     /**
-     * @dev Mints tokens on the receiving chain.
-     * Only callable by addresses with the MANAGER_ROLE.
-     * @param account The account to receive the minted tokens.
-     * @param amount The amount of tokens to mint.
-     * @param nonce The unique transaction identifier.
-     */
+    * @dev Mints tokens on the receiving chain after a cross-chain transfer.
+    * Only callable by addresses with the MANAGER_ROLE.
+    * @param token The address of the token to mint.
+    * @param account The account that will receive the newly minted tokens.
+    * @param amount The amount of tokens to mint.
+    * @param nonce A unique identifier for this transaction to prevent replay attacks.
+    */
     function mintToken(address token, address account, uint256 amount, bytes32 nonce) public onlyRole(MANAGER_ROLE) whenNotPaused nonReentrant {
         if (_nonces[nonce]) revert InvalidNonce();
         _nonces[nonce] = true;
@@ -143,12 +146,13 @@ contract CrossChainBridge is Initializable, AccessControlUpgradeable, UUPSUpgrad
 
 
     /**
-     * @dev Burns tokens when bridging back to the original chain.
-     * Only callable by addresses with the MANAGER_ROLE.
-     * @param account The account whose tokens will be burned.
-     * @param amount The amount of tokens to burn.
-     * @param nonce The unique transaction identifier.
-     */
+    * @dev Burns tokens on the sending chain before a cross-chain transfer.
+    * Only callable by addresses with the MANAGER_ROLE.
+    * @param token The address of the token to burn.
+    * @param account The account whose tokens will be burned.
+    * @param amount The amount of tokens to burn.
+    * @param nonce A unique identifier for this transaction to prevent replay attacks.
+    */
     function burnToken(address token, address account, uint256 amount, bytes32 nonce) public onlyRole(MANAGER_ROLE) whenNotPaused nonReentrant {
         if (_nonces[nonce]) revert InvalidNonce();
         _nonces[nonce] = true;
