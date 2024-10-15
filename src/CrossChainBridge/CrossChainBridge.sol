@@ -23,38 +23,33 @@ interface IERC20UpgradeableCustom is IERC20Upgradeable {
  * @dev Contract for bridging tokens across different chains.
  * Handles locking, minting, burning, and unlocking of tokens to facilitate cross-chain transfers.
  */
-contract CrossChainBridge is
-    Initializable,
-    AccessControlUpgradeable,
-    UUPSUpgradeable,
-    PausableUpgradeable,
-    ReentrancyGuardUpgradeable
-{
+contract CrossChainBridge is Initializable, AccessControlUpgradeable, UUPSUpgradeable, PausableUpgradeable, ReentrancyGuardUpgradeable {
     using SafeERC20Upgradeable for IERC20Upgradeable;
 
     // Define roles for access control
     bytes32 public constant MANAGER_ROLE = keccak256("MANAGER_ROLE");
     bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
+    bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
     bytes32 public constant WITHDRAWER_ROLE = keccak256("WITHDRAWER_ROLE");
 
     // Nonce tracking to prevent replay attacks
     mapping(bytes32 => bool) private _nonces;
+   
+    // Events
+    event LockTokenEvent(address indexed token, uint256 amount, address indexed account, bytes32 indexed nonce);
+    event UnlockTokenEvent(address indexed token, uint256 amount, address indexed account, bytes32 indexed nonce);
+    event MintTokenEvent(address indexed token, uint256 amount, address indexed account, bytes32 indexed nonce);
+    event BurnTokenEvent(address indexed token, uint256 amount, address indexed account, bytes32 indexed nonce);
+    event PauseEvent();
+    event UnpauseEvent();
+    event WithdrawEtherEvent(address indexed to, uint256 amount);
+    event WithdrawERC20Event(address indexed token, address indexed to, uint256 amount);
 
-    // Define custom errors
+    // Custom errors
     error InvalidNonce();
     error InsufficientAccountBalance();
     error InsufficientContractBalance();
     
-    // Events
-    event LockTokenEvent(address indexed account, uint256 amount, bytes32 indexed nonce);
-    event UnlockTokenEvent(address indexed account, uint256 amount, bytes32 indexed nonce);
-    event MintTokenEvent(address indexed account, uint256 amount, bytes32 indexed nonce);
-    event BurnTokenEvent(address indexed account, uint256 amount, bytes32 indexed nonce);
-    event PauseEvent();
-    event UnpauseEvent();
-    event WithdrawEtherEvent(address indexed account, uint256 amount);
-    event WithdrawERC20Event(address indexed token, address indexed account, uint256 amount);
-
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
         _disableInitializers();
@@ -75,6 +70,7 @@ contract CrossChainBridge is
         _grantRole(DEFAULT_ADMIN_ROLE, admin);
         _grantRole(MANAGER_ROLE, admin);
         _grantRole(PAUSER_ROLE, admin);
+        _grantRole(UPGRADER_ROLE, admin);
         _grantRole(WITHDRAWER_ROLE, admin);
     }
 
@@ -89,13 +85,18 @@ contract CrossChainBridge is
         if (_nonces[nonce]) revert InvalidNonce();
         _nonces[nonce] = true;
 
-        // Ensure the account has enough balance
-        if (IERC20Upgradeable(token).balanceOf(account) < amount) revert InsufficientAccountBalance();
+        if (token == address(0)) {
+            // Ensure the account has enough Ether balance
+            if (account.balance < amount) revert InsufficientAccountBalance();
+        } else {
+            // Ensure the account has enough token balance
+            if (IERC20Upgradeable(token).balanceOf(account) < amount) revert InsufficientAccountBalance();
 
-        // Transfer tokens from the account to this contract
-        IERC20Upgradeable(token).safeTransferFrom(account, address(this), amount);
+            // Transfer tokens from the account to this contract
+            IERC20Upgradeable(token).safeTransferFrom(account, address(this), amount);
+        }
 
-        emit LockTokenEvent(account, amount, nonce);
+        emit LockTokenEvent(token, amount, account, nonce);
     }
 
     /**
@@ -109,13 +110,18 @@ contract CrossChainBridge is
         if (_nonces[nonce]) revert InvalidNonce();
         _nonces[nonce] = true;
         
-        // Ensure the contract has enough balance
-        if (IERC20Upgradeable(token).balanceOf(address(this)) < amount) revert InsufficientContractBalance();
+        if (token == address(0)) {
+            // Ensure the contract has enough balance
+            if (address(this).balance < amount) revert InsufficientContractBalance();
+        } else {
+            // Ensure the contract has enough balance
+            if (IERC20Upgradeable(token).balanceOf(address(this)) < amount) revert InsufficientContractBalance();
 
-        // Transfer tokens from the contract to the account
-        IERC20Upgradeable(token).safeTransfer(account, amount);
+            // Transfer tokens from the contract to the account
+            IERC20Upgradeable(token).safeTransfer(account, amount);
+        }
 
-        emit UnlockTokenEvent(account, amount, nonce);
+        emit UnlockTokenEvent(token, amount, account, nonce);
     }
 
     /**
@@ -132,7 +138,7 @@ contract CrossChainBridge is
         // Mint new tokens to the account
         IERC20UpgradeableCustom(token).mint(account, amount);
 
-        emit MintTokenEvent(account, amount, nonce);
+        emit MintTokenEvent(token, amount, account, nonce);
     }
 
 
@@ -154,40 +160,7 @@ contract CrossChainBridge is
         IERC20Upgradeable(token).safeTransferFrom(account, address(this), amount);
         IERC20UpgradeableCustom(token).burn(amount);
 
-        emit BurnTokenEvent(account, amount, nonce);
-    }
-
-    /**
-     * @dev Locks Ether for cross-chain transfer.
-     * Only callable by addresses with the MANAGER_ROLE.
-     * @param account The account whose Ether will be locked.
-     * @param amount The amount of Ether to lock.
-     * @param nonce The unique transaction identifier.
-     */
-    function lockEther(address account, uint256 amount, bytes32 nonce) public payable whenNotPaused nonReentrant onlyRole(MANAGER_ROLE) {
-        if (_nonces[nonce]) revert InvalidNonce();
-        _nonces[nonce] = true;
-
-        // Emit event for locking Ether on behalf of the specified user account
-        emit LockTokenEvent(account, amount, nonce);
-    }
-
-    /**
-     * @dev Unlocks Ether after cross-chain transfer.
-     * Only callable by addresses with the MANAGER_ROLE.
-     * @param account The account whose Ether will be unlocked.
-     * @param amount The amount of Ether to unlock.
-     * @param nonce The unique transaction identifier.
-     */
-    function unlockEther(address payable account, uint256 amount, bytes32 nonce) public onlyRole(MANAGER_ROLE) whenNotPaused nonReentrant {
-        if (_nonces[nonce]) revert InvalidNonce();
-        _nonces[nonce] = true;
-
-        // Ensure the contract has enough balance
-        if (address(this).balance < amount) revert InsufficientContractBalance();
-
-        account.transfer(amount);
-        emit UnlockTokenEvent(account, amount, nonce);
+        emit BurnTokenEvent(token, amount, account, nonce);
     }
 
     /**
@@ -212,8 +185,7 @@ contract CrossChainBridge is
      * @dev Withdraws mistakenly sent ether from the contract.
      * @param amount The amount of Ether to withdraw.
      */
-    function withdrawEther(uint256 amount) public nonReentrant onlyRole(WITHDRAWER_ROLE)
-    {
+    function withdrawEther(uint256 amount) public nonReentrant onlyRole(WITHDRAWER_ROLE) {
         // Ensure the contract has enough balance
         if (address(this).balance < amount) revert InsufficientContractBalance();
 
@@ -240,5 +212,5 @@ contract CrossChainBridge is
     /**
      * @dev Authorizes contract upgrades. Only callable by addresses with the UPGRADER_ROLE.
      */
-    function _authorizeUpgrade(address newImplementation) internal override onlyRole(DEFAULT_ADMIN_ROLE) {}
+    function _authorizeUpgrade(address newImplementation) internal override onlyRole(UPGRADER_ROLE) {}
 }
