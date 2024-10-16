@@ -61,20 +61,16 @@ contract Vault is Ownable {
     }
 
     /**
-     * @dev Returns the ETH balance of the vault.
-     * @return The ETH balance of the vault.
-     */
-    function getETHBalance() public view returns (uint256) {
-        return address(this).balance;
-    }
-
-    /**
-     * @dev Returns the balance of a specific ERC20 token held by the vault.
-     * @param token The address of the ERC20 token.
-     * @return The balance of the specified token.
-     */
-    function getTokenBalance(address token) public view returns (uint256) {
-        return IERC20(token).balanceOf(address(this));
+    * @dev Returns the balance of the vault. If the token address is address(0), it returns the ETH balance.
+    * @param token The address of the ERC20 token. If address(0), returns the ETH balance.
+    * @return The balance of the specified token or ETH.
+    */
+    function getBalance(address token) public view returns (uint256) {
+        if (token == address(0)) {
+            return address(this).balance;
+        } else {
+            return IERC20(token).balanceOf(address(this));
+        }
     }
 
     /**
