@@ -124,8 +124,7 @@ contract CustomToken is Initializable, ERC20Upgradeable, ERC20BurnableUpgradeabl
      * @dev Withdraws mistakenly sent ether from the contract.
      * @param amount The amount of Ether to withdraw.
      */
-    function withdrawEther(uint256 amount) public nonReentrant onlyRole(WITHDRAWER_ROLE)
-    {
+    function withdrawEther(uint256 amount) public nonReentrant onlyRole(WITHDRAWER_ROLE) {
         // Ensure the contract has enough balance
         if (address(this).balance < amount) revert InsufficientContractBalance();
 
