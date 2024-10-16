@@ -6,8 +6,10 @@ Developed by: Robert Chanphakeo
 
 ## Contracts
 
-- `CustomToken.sol`: Implementation of a customizable ERC20 token.
-- `CustomFiatToken.sol`: Implementation of a customizable ERC20 token for stablecoins with additional features such as freeze account and unfreeze account. 
+- `CustomToken\CustomToken.sol`: Implementation of a customizable ERC20 token.
+- `CustomToken\CustomFiatToken.sol`: Implementation of a customizable ERC20 token for stablecoins with additional features such as freeze account and unfreeze account.
+- `CrossChainBridge\CrossChainBridge.sol`: Implementation of a contract for bridging tokens across different chains.
+- `Vault\Vault.sol`: Implementation of a simple vault contract that securely holds tokens and allows only the owner to manage the stored assets. 
 
 Note that no initial supply is minted during deployment; tokens can be minted in a separate transaction.
 
