@@ -76,10 +76,8 @@ contract USDxCollateralPool is Initializable, AccessControlUpgradeable, UUPSUpgr
     error AccountBlacklisted(address account);
     error InsufficientContractBalance();
     error InsufficientContractSBXBalance();
-    error MintAmountBelowMinimum();
-    error MintAmountExceedsMaximum();
-    error RedeemAmountBelowMinimum();
-    error RedeemAmountExceedsMaximum();
+    error InvalidMintAmount();
+    error InvalidRedeemAmount();
     error InvalidUSDxAmount();
     error UnsupportedCollateralToken();
     error InvalidCollateralRatio();
@@ -173,9 +171,8 @@ contract USDxCollateralPool is Initializable, AccessControlUpgradeable, UUPSUpgr
         // Calculate the amount of USDx to mint based on collateral ratio
         uint256 syntheticAmount = (adjustedCollateralAmount * collateralToken.collateralRatio * 1e14) / targetPrice;
 
-        // Apply minimum and maximum mint amounts
-        if (syntheticAmount < minMintAmount) revert MintAmountBelowMinimum();
-        if (syntheticAmount > maxMintAmount) revert MintAmountExceedsMaximum();
+        // Check mint amount is valid
+        if (syntheticAmount < minMintAmount || syntheticAmount > maxMintAmount) revert InvalidMintAmount();
 
         // Calculate required SBX amount based on sbxPercentage
         // sbxPercentage is in basis points, so divide by 1e4 to get the percentage
@@ -227,9 +224,8 @@ contract USDxCollateralPool is Initializable, AccessControlUpgradeable, UUPSUpgr
         // Calculate the amount of collateral to redeem based on the collateral ratio
         uint256 collateralAmount = (adjustedCollateralAmount * targetPrice * 1e4) / (collateralToken.collateralRatio * 1e18);
 
-        // Apply minimum and maximum redeem amounts
-        if (collateralAmount < minRedeemAmount) revert RedeemAmountBelowMinimum();
-        if (collateralAmount > maxRedeemAmount) revert RedeemAmountExceedsMaximum();
+        // Check redeem amount is valid
+        if (collateralAmount < minRedeemAmount || collateralAmount > maxRedeemAmount) revert InvalidRedeemAmount();
 
         // Ensure the contract has enough collateral balance
         if (collateralToken.token.balanceOf(address(this)) < collateralAmount) revert InsufficientContractBalance();
