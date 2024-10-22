@@ -350,6 +350,18 @@ contract USDxCollateralPool is Initializable, AccessControlUpgradeable, UUPSUpgr
     }
 
     /**
+    * @dev Updates the address where management fees will be sent (treasury address).
+    * Can only be called by an address with the DEFAULT_ADMIN_ROLE.
+    * @param newTreasuryAddress The new address to set as the treasury.
+    */
+    function setTreasuryAddress(address newTreasuryAddress) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (newTreasuryAddress == address(0)) {
+            revert InvalidTreasuryAddress();
+        }
+        treasuryAddress = newTreasuryAddress;
+    }
+
+    /**
      * @dev Updates the target price of USDx in collateral terms.
      * Can only be called by addresses with the DEFAULT_ADMIN_ROLE.
      * @param _targetPrice The new target price for USDx, in USDx terms (e.g., 1 for $1).
