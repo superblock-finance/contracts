@@ -350,7 +350,7 @@ contract USDxCollateralPool is Initializable, AccessControlUpgradeable, UUPSUpgr
     }
 
     /**
-    * @dev Updates the address where management fees will be sent (treasury address).
+    * @dev Updates the treasury address where fees will be sent.
     * Can only be called by an address with the DEFAULT_ADMIN_ROLE.
     * @param newTreasuryAddress The new address to set as the treasury.
     */
