@@ -34,6 +34,9 @@ contract StakedUSDx is Initializable, ERC20Upgradeable, ERC4626Upgradeable, ERC2
     // The underlying USDx token to be staked
     IERC20Upgradeable private _underlyingAsset;
 
+    address public treasuryAddress;
+    uint256 public managementFeePercentage; // basis points
+
     // Struct to store information about unstake requests
     struct UnstakeRequest {
         uint256 amount; // The amount of stakedUSDx requested for unstake
@@ -71,6 +74,8 @@ contract StakedUSDx is Initializable, ERC20Upgradeable, ERC4626Upgradeable, ERC2
     error NoUnstakeRequest();
     error UnstakeRequestInCooldown();
     error MinSharesViolation();
+    error InvalidManagementFeePercentage();
+    error InvalidTreasuryAddress();
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -80,9 +85,10 @@ contract StakedUSDx is Initializable, ERC20Upgradeable, ERC4626Upgradeable, ERC2
     /**
      * @dev Initializes the StakedUSDx contract.
      * @param underlyingAsset The address of the USDx token that will be staked in this contract.
+     * @param _treasuryAddress Address where fees will be sent.
      * @param admin The address that will be assigned as the default admin role.
      */
-    function initialize(IERC20Upgradeable underlyingAsset, address admin) initializer public {
+    function initialize(IERC20Upgradeable underlyingAsset, address _treasuryAddress, address admin) initializer public {
         __ERC4626_init(IERC20(address(underlyingAsset)));
         __ERC20_init("Staked USDx", "sUSDx");
         __ERC20Pausable_init();
@@ -91,8 +97,6 @@ contract StakedUSDx is Initializable, ERC20Upgradeable, ERC4626Upgradeable, ERC2
         __UUPSUpgradeable_init();
         __ReentrancyGuard_init();
 
-        _underlyingAsset = underlyingAsset; // Underlying asset (USDx)
-
         _grantRole(DEFAULT_ADMIN_ROLE, admin);
         _grantRole(UPGRADER_ROLE, admin);
         _grantRole(REWARD_MANAGER_ROLE, admin);
@@ -100,6 +104,12 @@ contract StakedUSDx is Initializable, ERC20Upgradeable, ERC4626Upgradeable, ERC2
         _grantRole(FREEZER_ROLE, admin);
         _grantRole(BLACKLISTER_ROLE, admin);
         _grantRole(WITHDRAWER_ROLE, admin);
+
+        _underlyingAsset = underlyingAsset; // Underlying asset (USDx)
+        treasuryAddress = _treasuryAddress;
+
+        // Initialize default parameters
+        managementFeePercentage = 1000; // 10% in basis points
     }
 
     /**
@@ -207,10 +217,40 @@ contract StakedUSDx is Initializable, ERC20Upgradeable, ERC4626Upgradeable, ERC2
     */
     function distributeRewards(uint256 rewardsAmount) external onlyRole(REWARD_MANAGER_ROLE) returns (bool) {
         if (rewardsAmount == 0) revert AmountZero();
-        _underlyingAsset.safeTransferFrom(msg.sender, address(this), rewardsAmount);
+
+        uint256 feeAmount = (rewardsAmount * managementFeePercentage) / 10000;
+        uint256 stakingRewardsAmount = rewardsAmount - feeAmount;
+
+        _underlyingAsset.safeTransferFrom(msg.sender, address(this), stakingRewardsAmount);
+
+        _underlyingAsset.safeTransfer(treasuryAddress, feeAmount);
 
         emit DistributeRewardsEvent(rewardsAmount);
         return true;
+    }
+
+    /**
+    * @dev Updates the treasury address where fees will be sent.
+    * Can only be called by an address with the DEFAULT_ADMIN_ROLE.
+    * @param newTreasuryAddress The new address to set as the treasury.
+    */
+    function setTreasuryAddress(address newTreasuryAddress) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (newTreasuryAddress == address(0)) {
+            revert InvalidTreasuryAddress();
+        }
+        treasuryAddress = newTreasuryAddress;
+    }
+
+    /**
+    * @dev Updates the management fee percentage (in basis points).
+    * Can only be called by an address with the DEFAULT_ADMIN_ROLE.
+    * @param newManagementFeePercentage The new management fee percentage in basis points (max 10000).
+    */
+    function setManagementFeePercentage(uint256 newManagementFeePercentage) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (newManagementFeePercentage > 10000) { // 10000 basis points = 100%
+            revert InvalidManagementFeePercentage();
+        }
+        managementFeePercentage = newManagementFeePercentage;
     }
 
     /**
