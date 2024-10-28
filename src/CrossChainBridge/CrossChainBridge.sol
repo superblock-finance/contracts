@@ -37,10 +37,13 @@ contract CrossChainBridge is Initializable, AccessControlUpgradeable, UUPSUpgrad
     mapping(bytes32 => bool) private _nonces;
    
     // Events
-    event LockTokenEvent(address indexed token, uint256 amount, address indexed account, bytes32 indexed nonce, address vault);
-    event UnlockTokenEvent(address indexed token, uint256 amount, address indexed account, bytes32 indexed nonce, address vault);
-    event MintTokenEvent(address indexed token, uint256 amount, address indexed account, bytes32 indexed nonce);
-    event BurnTokenEvent(address indexed token, uint256 amount, address indexed account, bytes32 indexed nonce);
+    event BridgeTokenEvent(address indexed token, uint256 amount, address indexed account, bytes32 indexed nonce, uint256 sourceChainId, uint256 destinationChainId);
+    event ReleaseTokenEvent(address indexed token, uint256 amount, address indexed account, bytes32 indexed nonce, uint256 sourceChainId, uint256 destinationChainId, bytes32 bridgeTokenNonce);
+
+    event LockTokenEvent(address indexed token, uint256 amount, address indexed account, bytes32 indexed nonce, address vault, uint256 sourceChainId, uint256 destinationChainId);
+    event BurnTokenEvent(address indexed token, uint256 amount, address indexed account, bytes32 indexed nonce, uint256 sourceChainId, uint256 destinationChainId);
+    event MintTokenEvent(address indexed token, uint256 amount, address indexed account, bytes32 indexed nonce, uint256 sourceChainId, uint256 destinationChainId, bytes32 bridgeTokenNonce);
+    event UnlockTokenEvent(address indexed token, uint256 amount, address indexed account, bytes32 indexed nonce, address vault, uint256 sourceChainId, uint256 destinationChainId, bytes32 bridgeTokenNonce);
     event PauseEvent();
     event UnpauseEvent();
     event WithdrawEtherEvent(address indexed to, uint256 amount);
@@ -50,7 +53,10 @@ contract CrossChainBridge is Initializable, AccessControlUpgradeable, UUPSUpgrad
     error InvalidNonce();
     error InsufficientAccountBalance();
     error InsufficientContractBalance();
-    
+    error InvalidVaultAddress();
+
+    address public vaultAddress;
+
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
         _disableInitializers();
@@ -60,12 +66,15 @@ contract CrossChainBridge is Initializable, AccessControlUpgradeable, UUPSUpgrad
      * @dev Initializes the contract, setting up roles and initializing inherited contracts.
      * Grants necessary roles to the specified admin address.
      * @param admin The address to be granted admin roles.
+     * @param _vaultAddress Address where tokens are stored.
      */
-    function initialize(address admin) public initializer {
+    function initialize(address _vaultAddress, address admin) public initializer {
         __AccessControl_init();
         __UUPSUpgradeable_init();
         __Pausable_init();
         __ReentrancyGuard_init();
+
+        vaultAddress = _vaultAddress;
 
         // Grant roles to the specified admin address
         _grantRole(DEFAULT_ADMIN_ROLE, admin);
@@ -76,22 +85,66 @@ contract CrossChainBridge is Initializable, AccessControlUpgradeable, UUPSUpgrad
     }
 
     /**
-    * @dev Locks tokens or Ether to facilitate cross-chain transfers.
-    * Only callable by addresses with the MANAGER_ROLE.
-    * @param token The address of the token to lock. Use address(0) for Ether.
-    * @param account The account whose tokens or Ether will be locked.
-    * @param amount The amount of tokens or Ether to lock.
-    * @param nonce A unique identifier for this transaction to prevent replay attacks.
-    * @param vault The address of the vault to store tokens. If set to address(0), defaults to the bridge contract's address.
-    */
-    function lockToken(address token, address account, uint256 amount, bytes32 nonce, address vault) public onlyRole(MANAGER_ROLE) whenNotPaused nonReentrant {
+     * @dev Initiates the bridging process of tokens to another chain.
+     * Depending on the `isLockMode` flag, it will either lock or burn the tokens.
+     * - If `isLockMode` is true, tokens are locked in the vault.
+     * - If `isLockMode` is false, tokens are burned.
+     * Emits a {BridgeTokenEvent}.
+     * @param token The address of the token to bridge.
+     * @param account The account initiating the bridge.
+     * @param amount The amount of tokens to bridge.
+     * @param nonce A unique identifier to prevent replay attacks.
+     * @param destinationChainId The ID of the destination chain.
+     * @param isLockMode Indicates whether to lock (true) or burn (false) tokens.
+     */
+    function bridgeToken(address token, address account, uint256 amount, bytes32 nonce, uint256 destinationChainId, bool isLockMode) external onlyRole(MANAGER_ROLE) whenNotPaused nonReentrant {      
+        if (isLockMode) {
+            lockToken(token, account, amount, nonce, destinationChainId);
+        } else {
+            burnToken(token, account, amount, nonce, destinationChainId);
+        }
+
+        emit BridgeTokenEvent(token, amount, account, nonce, block.chainid, destinationChainId);
+    }
+
+    /**
+     * @dev Completes the bridging process by releasing tokens on the destination chain.
+     * Depending on the `isMintMode` flag, it will either mint or unlock the tokens.
+     * - If `isMintMode` is true, new tokens are minted to the account.
+     * - If `isMintMode` is false, tokens are unlocked from the vault.
+     * Emits a {ReleaseTokenEvent}.
+     * @param token The address of the token to release.
+     * @param account The account that will receive the tokens.
+     * @param amount The amount of tokens to release.
+     * @param nonce A unique identifier to prevent replay attacks.
+     * @param sourceChainId The ID of the chain where tokens were originally bridged from.
+     * @param bridgeTokenNonce The nonce used in the corresponding {bridgeToken} call.
+     * @param isMintMode Indicates whether to mint (true) or unlock (false) tokens.
+     */
+    function releaseToken(address token, address account, uint256 amount, bytes32 nonce, uint256 sourceChainId, bytes32 bridgeTokenNonce, bool isMintMode) external onlyRole(MANAGER_ROLE) whenNotPaused nonReentrant {
+        if (isMintMode) {
+            mintToken(token, account, amount, nonce, sourceChainId, bridgeTokenNonce);
+        } else {
+            unlockToken(token, account, amount, nonce, sourceChainId, bridgeTokenNonce);
+        }
+
+        emit ReleaseTokenEvent(token, amount, account, nonce, sourceChainId, block.chainid, bridgeTokenNonce);
+    }
+
+    /**
+     * @dev Locks tokens by transferring them from the user's account to the vault.
+     * Used when bridging tokens from their original chain.
+     * Emits a {LockTokenEvent}.
+     * @param token The address of the token to lock.
+     * @param account The account whose tokens will be locked.
+     * @param amount The amount of tokens to lock.
+     * @param nonce A unique identifier to prevent replay attacks.
+     * @param destinationChainId The ID of the chain where tokens will be released.
+     */
+    function lockToken(address token, address account, uint256 amount, bytes32 nonce, uint256 destinationChainId) private {
         if (_nonces[nonce]) revert InvalidNonce();
         _nonces[nonce] = true;
-
-        if (vault == address(0)) {
-            vault = address(this); // Default to the bridge contract's address if no vault is specified
-        }
-        
+       
         if (token == address(0)) {
             // Ensure the account has enough Ether balance
             if (account.balance < amount) revert InsufficientAccountBalance();
@@ -101,69 +154,22 @@ contract CrossChainBridge is Initializable, AccessControlUpgradeable, UUPSUpgrad
         }
 
         // Lock tokens or Ether to the vault contract on the receiving chain
-        IERC20Upgradeable(token).safeTransferFrom(account, vault, amount);
+        IERC20Upgradeable(token).safeTransferFrom(account, vaultAddress, amount);
 
-        emit LockTokenEvent(token, amount, account, nonce, vault);
+        emit LockTokenEvent(token, amount, account, nonce, vaultAddress, block.chainid, destinationChainId);
     }
 
     /**
-    * @dev Unlocks tokens or Ether after a successful cross-chain transfer.
-    * Only callable by addresses with the MANAGER_ROLE.
-    * @param token The address of the token to unlock. Use address(0) for Ether.
-    * @param account The account that will receive the unlocked tokens or Ether.
-    * @param amount The amount of tokens or Ether to unlock.
-    * @param nonce A unique identifier for this transaction to prevent replay attacks.
-    * @param vault The address of the vault from which to unlock tokens. If set to address(0), defaults to the bridge contract's address.
-    */
-    function unlockToken(address token, address account, uint256 amount, bytes32 nonce, address vault) public onlyRole(MANAGER_ROLE) whenNotPaused nonReentrant {
-        if (_nonces[nonce]) revert InvalidNonce();
-        _nonces[nonce] = true;
-        
-        if (vault == address(0)) {
-            vault = address(this); // Default to the bridge contract's address if no vault is specified
-        }
-
-        if (token == address(0)) {
-            // Ensure the contract has enough balance
-            if (address(this).balance < amount) revert InsufficientContractBalance();
-        } else {
-            // Ensure the contract has enough balance
-            if (IERC20Upgradeable(token).balanceOf(address(this)) < amount) revert InsufficientContractBalance();
-        }
-
-        // Transfer tokens from vault contract to account
-        IERC20Upgradeable(token).safeTransferFrom(vault, account, amount);
-
-        emit UnlockTokenEvent(token, amount, account, nonce, vault);
-    }
-
-    /**
-    * @dev Mints tokens on the receiving chain after a cross-chain transfer.
-    * Only callable by addresses with the MANAGER_ROLE.
-    * @param token The address of the token to mint.
-    * @param account The account that will receive the newly minted tokens.
-    * @param amount The amount of tokens to mint.
-    * @param nonce A unique identifier for this transaction to prevent replay attacks.
-    */
-    function mintToken(address token, address account, uint256 amount, bytes32 nonce) public onlyRole(MANAGER_ROLE) whenNotPaused nonReentrant {
-        if (_nonces[nonce]) revert InvalidNonce();
-        _nonces[nonce] = true;
-
-        // Mint new tokens to the account
-        IERC20UpgradeableCustom(token).mint(account, amount);
-
-        emit MintTokenEvent(token, amount, account, nonce);
-    }
-
-    /**
-    * @dev Burns tokens on the sending chain before a cross-chain transfer.
-    * Only callable by addresses with the MANAGER_ROLE.
-    * @param token The address of the token to burn.
-    * @param account The account whose tokens will be burned.
-    * @param amount The amount of tokens to burn.
-    * @param nonce A unique identifier for this transaction to prevent replay attacks.
-    */
-    function burnToken(address token, address account, uint256 amount, bytes32 nonce) public onlyRole(MANAGER_ROLE) whenNotPaused nonReentrant {
+     * @dev Burns tokens from the user's account.
+     * Used when bridging tokens from a non-original chain.
+     * Emits a {BurnTokenEvent}.
+     * @param token The address of the token to burn.
+     * @param account The account whose tokens will be burned.
+     * @param amount The amount of tokens to burn.
+     * @param nonce A unique identifier to prevent replay attacks.
+     * @param destinationChainId The ID of the chain where tokens will be released.
+     */
+    function burnToken(address token, address account, uint256 amount, bytes32 nonce, uint256 destinationChainId) private {
         if (_nonces[nonce]) revert InvalidNonce();
         _nonces[nonce] = true;
 
@@ -174,7 +180,67 @@ contract CrossChainBridge is Initializable, AccessControlUpgradeable, UUPSUpgrad
         IERC20Upgradeable(token).safeTransferFrom(account, address(this), amount);
         IERC20UpgradeableCustom(token).burn(amount);
 
-        emit BurnTokenEvent(token, amount, account, nonce);
+        emit BurnTokenEvent(token, amount, account, nonce, block.chainid, destinationChainId);
+    }
+
+    /**
+     * @dev Mints new tokens to the specified account.
+     * Used when tokens are bridged to a chain where they don't originally exist.
+     * @param token The address of the token to mint.
+     * @param account The account that will receive the minted tokens.
+     * @param amount The amount of tokens to mint.
+     * @param nonce A unique identifier to prevent replay attacks.
+     * @param sourceChainId The ID of the chain where the tokens were bridged from.
+     * @param bridgeTokenNonce The nonce used in the corresponding {bridgeToken} call on the source chain.
+     */
+    function mintToken(address token, address account, uint256 amount, bytes32 nonce, uint256 sourceChainId, bytes32 bridgeTokenNonce) private {
+        if (_nonces[nonce]) revert InvalidNonce();
+        _nonces[nonce] = true;
+
+        // Mint new tokens to the account
+        IERC20UpgradeableCustom(token).mint(account, amount);
+
+        emit MintTokenEvent(token, amount, account, nonce, sourceChainId, block.chainid, bridgeTokenNonce);
+    }
+
+    /**
+     * @dev Unlocks tokens from the vault and transfers them to the specified account.
+     * Used when tokens are bridged back to their original chain.
+     * @param token The address of the token to unlock.
+     * @param account The account that will receive the unlocked tokens.
+     * @param amount The amount of tokens to unlock.
+     * @param nonce A unique identifier to prevent replay attacks.
+     * @param sourceChainId The ID of the chain where the tokens were bridged from.
+     * @param bridgeTokenNonce The nonce used in the corresponding {bridgeToken} call on the source chain.
+     */
+    function unlockToken(address token, address account, uint256 amount, bytes32 nonce, uint256 sourceChainId, bytes32 bridgeTokenNonce) private {
+        if (_nonces[nonce]) revert InvalidNonce();
+        _nonces[nonce] = true;
+        
+        if (token == address(0)) {
+            // Ensure the contract has enough balance
+            if (vaultAddress.balance < amount) revert InsufficientContractBalance();
+        } else {
+            // Ensure the contract has enough balance
+            if (IERC20Upgradeable(token).balanceOf(vaultAddress) < amount) revert InsufficientContractBalance();
+        }
+
+        // Transfer tokens from vault contract to account
+        IERC20Upgradeable(token).safeTransferFrom(vaultAddress, account, amount);
+
+        emit UnlockTokenEvent(token, amount, account, nonce, vaultAddress, sourceChainId, block.chainid, bridgeTokenNonce);
+    }
+
+    /**
+     * @dev Updates the vault address
+     * Can only be called by an address with the DEFAULT_ADMIN_ROLE.
+     * @param newVaultAddress The new address to set as the treasury.
+     */
+    function setVaultAddress(address newVaultAddress) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (newVaultAddress == address(0)) {
+            revert InvalidVaultAddress();
+        }
+        vaultAddress = newVaultAddress;
     }
 
     /**
